@@ -1,0 +1,16 @@
+open folder:workspace
+cd model/private/modelamn
+
+eval "$(ssh-agent -s)"
+ssh-add ./id_ed25519
+
+git clone git@github.com:luot-ai/AICS.git
+cp -r /opt/code_chap_2_3/ ./AICS
+
+find . -type f -size +50M
+git add commit push
+
+cd pycnnl/cnnl_python
+pip install swig
+./build_pycnnl
+
