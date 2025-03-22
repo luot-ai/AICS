@@ -1,15 +1,12 @@
+# coding:utf-8
 import numpy as np
 import struct
 import os
 import scipy.io
 import time
-import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-
-
-from layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
-from layers_2 import ConvolutionalLayer, MaxPoolingLayer, FlattenLayer
+from stu_upload.layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
+from stu_upload.layers_2 import ConvolutionalLayer, MaxPoolingLayer, FlattenLayer
 
 def show_matrix(mat, name):
     #print(name + str(mat.shape) + ' mean %f, std %f' % (mat.mean(), mat.std()))
@@ -81,6 +78,7 @@ class VGG19(object):
 
         self.layers['fc7'] = FullyConnectedLayer(4096, 4096)
         self.layers['relu7'] = ReLULayer()
+
         self.layers['fc8'] = FullyConnectedLayer(4096, 1000)
 
         self.layers['softmax'] = SoftmaxLossLayer()
@@ -98,7 +96,6 @@ class VGG19(object):
     def load_model(self):
         print('Loading parameters from file ' + self.param_path)
         params = scipy.io.loadmat(self.param_path)
-        #print(params)
         self.image_mean = params['normalization'][0][0][0]
         self.image_mean = np.mean(self.image_mean, axis=(0, 1))
         print('Get image mean: ' + str(self.image_mean))
@@ -108,7 +105,7 @@ class VGG19(object):
                 weight, bias = params['layers'][0][idx][0][0][0][0]
                 # matconvnet: weights dim [height, width, in_channel, out_channel]
                 # ours: weights dim [in_channel, height, width, out_channel]
-                # TODO：调整参数的形状
+                # 调整参数的形状
                 weight = np.transpose(weight, [2, 0, 1, 3])
                 bias = bias.reshape(-1)
                 self.layers[self.param_layer_name[idx]].load_param(weight, bias)
@@ -125,10 +122,10 @@ class VGG19(object):
         self.input_image -= self.image_mean
         self.input_image = np.reshape(self.input_image, [1]+list(self.input_image.shape))
         # input dim [N, channel, height, width]
-        # TODO：调整图片维度顺序
+        # 调整图片维度顺序
         self.input_image = np.transpose(self.input_image, [0, 3, 1, 2])
 
-    def forward(self):   # TODO：神经网络的前向传播
+    def forward(self):  # 神经网络的前向传播
         print('Inferencing...')
         start_time = time.time()
         current = self.input_image
@@ -139,7 +136,7 @@ class VGG19(object):
         return current
 
     def evaluate(self):
-        # TODO：获取神经网络前向传播的结果
+        # 获取神经网络前向传播的结果
         prob = self.forward()
         top1 = np.argmax(prob[0])
         print('Classification result: id = %d, prob = %f' % (top1, prob[0, top1]))

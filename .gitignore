@@ -1,4 +1,7 @@
 exp_2_2_mnist_mlp_dlp/core.98843
+*.so
+*.o
+*.cxx
 *.pyc
 *.swp
 *.txt
