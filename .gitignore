@@ -2,6 +2,7 @@ exp_2_2_mnist_mlp_dlp/core.98843
 *.pyc
 *.swp
 *.txt
+*.mat
 mnist_data/*
 __pycache__/exp_2_2_mnist_mlp_dlp/core.*
 exp_2_2_mnist_mlp_dlp/core.*
