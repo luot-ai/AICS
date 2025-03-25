@@ -44,13 +44,24 @@ class ConvolutionalLayer(object):
                 for idxh in range(height_out):
                     for idxw in range(width_out):
                         # TODO: 计算卷积层的前向传播，特征图与卷积核的内积再加偏置
-                        self.output[idxn, idxc, idxh, idxw] = ____________________________
+                        self.output[idxn, idxc, idxh, idxw] = np.sum(self.weight[:, :, :, idxc] * self.input_pad[idxn, :, idxh * self.stride : idxh * self.stride + self.kernel_size, idxw * self.stride : idxw * self.stride + self.kernel_size]) + self.bias[idxc]
         self.forward_time = time.time() - start_time
         return self.output
     def forward_speedup(self, input):
         # TODO: 改进forward函数，使得计算加速
         start_time = time.time()
-        _______________________
+        self.input = input # [N, C, H, W]
+        height = self.input.shape[2] + self.padding * 2
+        width = self.input.shape[3] + self.padding * 2
+        self.input_pad = np.zeros([self.input.shape[0], self.input.shape[1], height, width])
+        self.input_pad[:, :, self.padding:self.padding+self.input.shape[2], self.padding:self.padding+self.input.shape[3]] = self.input
+        height_out = (height - self.kernel_size) // self.stride + 1
+        width_out = (width - self.kernel_size) // self.stride + 1
+        #im2col+gemm
+        self.input_col = img2col(self.input_pad, height_out, width_out, self.kernel_size, self.stride)
+        self.weights_col = self.weight.transpose(3, 0, 1, 2).reshape(self.weight.shape[-1], -1)
+        output = np.matmul(self.weights_col, self.input_col.reshape(self.input_col.shape[0], -1, self.input_col.shape[3])) + self.bias.reshape(-1, 1)
+        self.output = output.reshape(self.input.shape[0], self.channel_out, height_out, width_out)
         self.forward_time = time.time() - start_time
         return self.output
     def backward_speedup(self, top_diff):
