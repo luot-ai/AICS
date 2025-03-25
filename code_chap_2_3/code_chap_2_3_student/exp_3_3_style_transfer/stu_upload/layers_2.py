@@ -11,20 +11,17 @@ def show_time(time, name):
     #print(name + str(time))
     pass
 
-def img2col(input, height_out, width_out, kernel_size, stride):
-    output = np.zeros([input.shape[0], input.shape[1], kernel_size * kernel_size, height_out * width_out])
-    height = (input.shape[2] - kernel_size) // stride + 1
-    width = (input.shape[3] - kernel_size) // stride + 1
-    for idxh in range(height):
-        for idxw in range(width):
-            output[:, :, :, idxh * width + idxw] = input[:, :, idxh * stride: idxh * stride + kernel_size,
-                                                   idxw * stride: idxw * stride + kernel_size].reshape(input.shape[0],
-                                                                                                       input.shape[1],
-                                                                                                       -1)
+def im2col(input, height_out, width_out, kernel_size, stride):
+    batch_size, channels, height, width = input.shape
+    output = np.zeros([batch_size, channels, kernel_size * kernel_size, height_out * width_out])
+    for idxh in range(height_out):
+        for idxw in range(width_out):
+            patch = input[:, :, idxh * stride: idxh * stride + kernel_size, idxw * stride: idxw * stride + kernel_size]
+            output[:, :, :, idxh * width_out + idxw] = patch.reshape(batch_size, channels, -1)
     return output
 
 
-def col2img(input, height_pad, width_pad, kernel_size, channel, padding, stride):
+def col2im(input, height_pad, width_pad, kernel_size, channel, padding, stride):
     output = np.zeros([input.shape[0], channel, height_pad, width_pad])
     input = input.reshape(input.shape[0], channel, -1, input.shape[2])
     height = (height_pad - kernel_size) // stride + 1
@@ -81,7 +78,7 @@ class ConvolutionalLayer(object):
         height_out = (height - self.kernel_size) // self.stride + 1
         width_out = (width - self.kernel_size) // self.stride + 1
         #im2col+gemm
-        self.input_col = img2col(self.input_pad, height_out, width_out, self.kernel_size, self.stride)
+        self.input_col = im2col(self.input_pad, height_out, width_out, self.kernel_size, self.stride)
         self.weights_col = self.weight.transpose(3, 0, 1, 2).reshape(self.weight.shape[-1], -1)
         output = np.matmul(self.weights_col, self.input_col.reshape(self.input_col.shape[0], -1, self.input_col.shape[3])) + self.bias.reshape(-1, 1)
         self.output = output.reshape(self.input.shape[0], self.channel_out, height_out, width_out)  
@@ -94,7 +91,7 @@ class ConvolutionalLayer(object):
         width_pad = self.input.shape[3] + self.padding * 2
         bottom_diff_col = np.matmul(self.weights_col.T, top_diff.transpose(1, 2, 3, 0).reshape(self.channel_out, -1))
         bottom_diff_col = bottom_diff_col.reshape(bottom_diff_col.shape[0], -1, self.input.shape[0]).transpose(2, 0, 1)
-        bottom_diff = col2img(bottom_diff_col, height_pad, width_pad, self.kernel_size, self.channel_in, self.padding, self.stride)
+        bottom_diff = col2im(bottom_diff_col, height_pad, width_pad, self.kernel_size, self.channel_in, self.padding, self.stride)
         self.backward_time = time.time() - start_time
         return bottom_diff
     def backward_raw(self, top_diff):
@@ -166,7 +163,7 @@ class MaxPoolingLayer(object):
         self.height_out = (self.input.shape[2] - self.kernel_size) // self.stride + 1
         self.width_out = (self.input.shape[3] - self.kernel_size) // self.stride + 1
 
-        self.input_col = img2col(self.input, self.height_out, self.width_out, self.kernel_size, self.stride).reshape(self.input.shape[0], self.input.shape[1], -1, self.height_out, self.width_out)
+        self.input_col = im2col(self.input, self.height_out, self.width_out, self.kernel_size, self.stride).reshape(self.input.shape[0], self.input.shape[1], -1, self.height_out, self.width_out)
         output = self.input_col.max(axis=2, keepdims=True)
         self.max_index = (self.input_col == output)
         self.output = output.reshape(self.input.shape[0], self.input.shape[1], self.height_out, self.width_out)
@@ -175,7 +172,7 @@ class MaxPoolingLayer(object):
     def backward_speedup(self, top_diff):
         # TODO: 改进backward函数，使得计算加速
         pool_diff = (self.max_index * top_diff[:, :, np.newaxis, :, :]).reshape(self.input.shape[0], -1, self.height_out * self.width_out)
-        bottom_diff = col2img(pool_diff, self.input.shape[2], self.input.shape[3], self.kernel_size, self.input.shape[1], 0, self.stride)
+        bottom_diff = col2im(pool_diff, self.input.shape[2], self.input.shape[3], self.kernel_size, self.input.shape[1], 0, self.stride)
 
         return bottom_diff
     def backward_raw_book(self, top_diff):

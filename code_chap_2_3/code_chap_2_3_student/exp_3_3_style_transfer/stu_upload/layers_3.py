@@ -9,7 +9,6 @@ class ContentLossLayer(object):
         print('\tContent loss layer.')
     def forward(self, input_layer, content_layer):
          # TODO： 计算风格迁移图像和目标内容图像的内容损失
-    
         loss = np.sum((input_layer - content_layer) ** 2)  / (2 * np.prod(input_layer.shape))
         return loss
     def backward(self, input_layer, content_layer):
