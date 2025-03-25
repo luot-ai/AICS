@@ -10,7 +10,14 @@ cp -r /opt/code_chap_2_3/ ./AICS
 find . -type f -size +50M
 git add commit push
 
-cd pycnnl/cnnl_python
-pip install swig
-./build_pycnnl
+cd ./AICS/code_chap_2_3/pycnnl/cnnl_python
+./build_pycnnl.sh
+
+git config --global user.name "luot"
+git config --global user.email "1035768203@qq.com"
+
+export PS1="\w\$ "
+export PS1="\$(pwd | sed 's#.*/AICS#AICS#')\$ "
+export PS1="\$(pwd | sed -E 's#^.*/code_chap_2_3##')\$ "
+
 
