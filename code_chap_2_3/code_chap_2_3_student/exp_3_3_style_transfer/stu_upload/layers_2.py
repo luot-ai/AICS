@@ -2,6 +2,7 @@ import numpy as np
 import struct
 import os
 import time
+from numpy.lib.stride_tricks import as_strided
 
 def show_matrix(mat, name):
     #print(name + str(mat.shape) + ' mean %f, std %f' % (mat.mean(), mat.std()))
@@ -11,24 +12,32 @@ def show_time(time, name):
     #print(name + str(time))
     pass
 
-def im2col(input, height_out, width_out, kernel_size, stride):
-    batch_size, channels, height, width = input.shape
-    output = np.zeros([batch_size, channels, kernel_size * kernel_size, height_out * width_out])
-    for idxh in range(height_out):
-        for idxw in range(width_out):
-            patch = input[:, :, idxh * stride: idxh * stride + kernel_size, idxw * stride: idxw * stride + kernel_size]
-            output[:, :, :, idxh * width_out + idxw] = patch.reshape(batch_size, channels, -1)
-    return output
+# N,C,OUT,K
+def im2col(input, kszie, stride):
+    N, C, H, W = input.shape
+    H_out = (H - kszie) // stride + 1
+    W_out = (W - kszie) // stride + 1
 
+    shape = (N, C, kszie, kszie, H_out, W_out)
+    strides = (
+        input.strides[0],  # Batch 维度
+        input.strides[1],  # Channel 维度
+        input.strides[2],  # Kernel 纵向步长 
+        input.strides[3],   # Kernel 横向步长
+        input.strides[2] * stride,  # 滑动窗口在 H 方向移动
+        input.strides[3] * stride  # 滑动窗口在 W 方向移动
+    )
+    patches = as_strided(input, shape=shape, strides=strides)
+    return patches.reshape(N, C,kszie * kszie, H_out * W_out)
 
-def col2im(input, height_pad, width_pad, kernel_size, channel, padding, stride):
+def col2im(input, height_pad, width_pad, kszie, channel, padding, stride):
     output = np.zeros([input.shape[0], channel, height_pad, width_pad])
     input = input.reshape(input.shape[0], channel, -1, input.shape[2])
-    height = (height_pad - kernel_size) // stride + 1
-    width = (width_pad - kernel_size) // stride + 1
+    height = (height_pad - kszie) // stride + 1
+    width = (width_pad - kszie) // stride + 1
     for idxh in range(height):
         for idxw in range(width):
-            output[:, :, idxh * stride : idxh * stride + kernel_size, idxw * stride : idxw * stride + kernel_size] += input[:, :, :, idxh * width + idxw].reshape(input.shape[0], channel, kernel_size, -1)
+            output[:, :, idxh * stride : idxh * stride + kszie, idxw * stride : idxw * stride + kszie] += input[:, :, :, idxh * width + idxw].reshape(input.shape[0], channel, kszie, -1)
     return output[:, :, padding : height_pad - padding, padding : width_pad - padding]
     
 class ConvolutionalLayer(object):
@@ -78,7 +87,7 @@ class ConvolutionalLayer(object):
         height_out = (height - self.kernel_size) // self.stride + 1
         width_out = (width - self.kernel_size) // self.stride + 1
         #im2col+gemm
-        self.input_col = im2col(self.input_pad, height_out, width_out, self.kernel_size, self.stride)
+        self.input_col = im2col(self.input_pad, self.kernel_size, self.stride)
         self.weights_col = self.weight.transpose(3, 0, 1, 2).reshape(self.weight.shape[-1], -1)
         output = np.matmul(self.weights_col, self.input_col.reshape(self.input_col.shape[0], -1, self.input_col.shape[3])) + self.bias.reshape(-1, 1)
         self.output = output.reshape(self.input.shape[0], self.channel_out, height_out, width_out)  
@@ -163,7 +172,7 @@ class MaxPoolingLayer(object):
         self.height_out = (self.input.shape[2] - self.kernel_size) // self.stride + 1
         self.width_out = (self.input.shape[3] - self.kernel_size) // self.stride + 1
 
-        self.input_col = im2col(self.input, self.height_out, self.width_out, self.kernel_size, self.stride).reshape(self.input.shape[0], self.input.shape[1], -1, self.height_out, self.width_out)
+        self.input_col = im2col(self.input,self.kernel_size, self.stride).reshape(self.input.shape[0], self.input.shape[1], -1, self.height_out, self.width_out)
         output = self.input_col.max(axis=2, keepdims=True)
         self.max_index = (self.input_col == output)
         self.output = output.reshape(self.input.shape[0], self.input.shape[1], self.height_out, self.width_out)

@@ -1,8 +1,9 @@
-open folder:workspace
-cd model/private/modelamn
 
+cd model/private/modelamn
 eval "$(ssh-agent -s)"
 ssh-add ./id_ed25519
+git config --global user.name "luot"
+git config --global user.email "1035768203@qq.com"
 
 git clone git@github.com:luot-ai/AICS.git
 cp -r /opt/code_chap_2_3/ ./AICS
@@ -12,9 +13,6 @@ git add commit push
 
 cd ./AICS/code_chap_2_3/pycnnl/cnnl_python
 ./build_pycnnl.sh
-
-git config --global user.name "luot"
-git config --global user.email "1035768203@qq.com"
 
 export PS1="\w\$ "
 export PS1="\$(pwd | sed 's#.*/AICS#AICS#')\$ "
