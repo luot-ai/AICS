@@ -12,7 +12,7 @@ def show_time(time, name):
     #print(name + str(time))
     pass
 
-# N,C,OUT,K
+# N,C,K,out
 def im2col(input, kszie, stride):
     N, C, H, W = input.shape
     H_out = (H - kszie) // stride + 1
@@ -80,18 +80,18 @@ class ConvolutionalLayer(object):
         # TODO: 改进forward函数，使得计算加速
         start_time = time.time()
         self.input = input # [N, C, H, W]
-        height = self.input.shape[2] + self.padding * 2
-        width = self.input.shape[3] + self.padding * 2
-        self.input_pad = np.zeros([self.input.shape[0], self.input.shape[1], height, width])
-        self.input_pad[:, :, self.padding:self.padding+self.input.shape[2], self.padding:self.padding+self.input.shape[3]] = self.input
+        N, C, H, W = input.shape
+        height = H + self.padding * 2
+        width = W + self.padding * 2
+        self.input_pad = np.zeros([N, C, height, width])
+        self.input_pad[:, :, self.padding:self.padding+H, self.padding:self.padding+W] = self.input
         height_out = (height - self.kernel_size) // self.stride + 1
         width_out = (width - self.kernel_size) // self.stride + 1
         #im2col+gemm
         self.input_col = im2col(self.input_pad, self.kernel_size, self.stride)
-        self.weights_col = self.weight.transpose(3, 0, 1, 2).reshape(self.weight.shape[-1], -1)
-        output = np.matmul(self.weights_col, self.input_col.reshape(self.input_col.shape[0], -1, self.input_col.shape[3])) + self.bias.reshape(-1, 1)
-        self.output = output.reshape(self.input.shape[0], self.channel_out, height_out, width_out)  
-
+        self.weights_col = self.weight.transpose(3, 0, 1, 2).reshape(self.channel_out, -1)
+        output = np.matmul(self.weights_col, self.input_col.reshape(N, -1, self.input_col.shape[3])) + self.bias.reshape(-1, 1)
+        self.output = output.reshape(N, self.channel_out, height_out, width_out)  
         self.forward_time = time.time() - start_time
         return self.output
     def backward_speedup(self, top_diff):
