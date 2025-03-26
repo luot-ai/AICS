@@ -30,6 +30,7 @@ def im2col(input, kszie, stride):
     patches = as_strided(input, shape=shape, strides=strides)
     return patches.reshape(N, C,kszie * kszie, H_out * W_out)
 
+#N,CKK,HW->NCHW
 def col2im(input, height_pad, width_pad, kszie, channel, padding, stride):
     output = np.zeros([input.shape[0], channel, height_pad, width_pad])
     input = input.reshape(input.shape[0], channel, -1, input.shape[2])
@@ -88,19 +89,22 @@ class ConvolutionalLayer(object):
         height_out = (height - self.kernel_size) // self.stride + 1
         width_out = (width - self.kernel_size) // self.stride + 1
         #im2col+gemm
-        self.input_col = im2col(self.input_pad, self.kernel_size, self.stride)
-        self.weights_col = self.weight.transpose(3, 0, 1, 2).reshape(self.channel_out, -1)
+        self.input_col = im2col(self.input_pad, self.kernel_size, self.stride) # N,Cin,KK,HW
+        self.weights_col = self.weight.transpose(3, 0, 1, 2).reshape(self.channel_out, -1) # Cout,CinKK
+        # N,Cout,HW
         output = np.matmul(self.weights_col, self.input_col.reshape(N, -1, self.input_col.shape[3])) + self.bias.reshape(-1, 1)
         self.output = output.reshape(N, self.channel_out, height_out, width_out)  
         self.forward_time = time.time() - start_time
         return self.output
     def backward_speedup(self, top_diff):
         start_time = time.time()
-        height_pad = self.input.shape[2] + self.padding * 2
-        width_pad = self.input.shape[3] + self.padding * 2
-        bottom_diff_col = np.matmul(self.weights_col.T, top_diff.transpose(1, 2, 3, 0).reshape(self.channel_out, -1))
-        bottom_diff_col = bottom_diff_col.reshape(bottom_diff_col.shape[0], -1, self.input.shape[0]).transpose(2, 0, 1)
-        bottom_diff = col2im(bottom_diff_col, height_pad, width_pad, self.kernel_size, self.channel_in, self.padding, self.stride)
+        print(self.weights_col.T.shape)
+        print(top_diff.shape)
+        N, C, H, W = self.input.shape
+        height = H + self.padding * 2
+        width = W + self.padding * 2
+        bottom_diff_col = np.matmul(self.weights_col.T, top_diff.reshape(N,self.channel_out,-1))# N,CoutKK,HW
+        bottom_diff = col2im(bottom_diff_col, height, width, self.kernel_size, self.channel_in, self.padding, self.stride)
         self.backward_time = time.time() - start_time
         return bottom_diff
     def backward_raw(self, top_diff):
