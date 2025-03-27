@@ -25,6 +25,18 @@ def test_speed_up():
     test_filter = np.random.rand(256, 3, 3, 256)
     test_bias = np.random.rand(256)
 
+    speedup_conv = ConvolutionalLayer(3, 256, 256, 1, 1, 1)
+    speedup_conv.init_param()
+    speedup_conv.load_param(test_filter, test_bias)
+    stamp = time.time()
+    speedup_conv_forward_result = speedup_conv.forward(test_data)
+    speedup_conv_forward_time = time.time()-stamp
+    print('conv forward speedup time: %f ms'%(speedup_conv_forward_time*1000))
+    stamp = time.time()
+    speedup_conv_backward_result = speedup_conv.backward(test_dloss)
+    speedup_conv_backward_time = time.time()-stamp
+    print('conv backward speedup time: %f ms'%(speedup_conv_backward_time*1000))
+
     conv = ConvolutionalLayer(3, 256, 256, 1, 1)
     conv.init_param()
     conv.load_param(test_filter, test_bias)
@@ -37,17 +49,6 @@ def test_speed_up():
     conv_backward_time = time.time()-stamp
     print('conv backward raw time: %f ms'%(conv_backward_time*1000))
 
-    speedup_conv = ConvolutionalLayer(3, 256, 256, 1, 1, 1)
-    speedup_conv.init_param()
-    speedup_conv.load_param(test_filter, test_bias)
-    stamp = time.time()
-    speedup_conv_forward_result = speedup_conv.forward(test_data)
-    speedup_conv_forward_time = time.time()-stamp
-    print('conv forward speedup time: %f ms'%(speedup_conv_forward_time*1000))
-    stamp = time.time()
-    speedup_conv_backward_result = speedup_conv.backward(test_dloss)
-    speedup_conv_backward_time = time.time()-stamp
-    print('conv backward speedup time: %f ms'%(speedup_conv_backward_time*1000))
 
     speedup_conv_forward_mse = computeMse(conv_forward_result.flatten(), speedup_conv_forward_result.flatten())
     speedup_conv_backward_mse = computeMse(conv_backward_result.flatten(), speedup_conv_backward_result.flatten())

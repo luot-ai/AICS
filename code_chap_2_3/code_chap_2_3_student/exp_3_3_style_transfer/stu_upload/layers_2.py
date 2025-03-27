@@ -30,15 +30,17 @@ def im2col(input, kszie, stride):
     patches = as_strided(input, shape=shape, strides=strides)
     return patches.reshape(N, C,kszie * kszie, H_out * W_out)
 
-#N,CKK,HW->NCHW
-def col2im(input, height_pad, width_pad, kszie, channel, padding, stride):
-    output = np.zeros([input.shape[0], channel, height_pad, width_pad])
-    input = input.reshape(input.shape[0], channel, -1, input.shape[2])
+#N,CKK,HoWo->NCHiWi
+def col2im(input, height_pad, width_pad, kszie, channel, padding, stride):#hp wp都是self.input的
+    N = input.shape[0]
+    output = np.zeros([N, channel, height_pad, width_pad])
+    input = input.reshape(N, channel, kszie * kszie, -1)#N,C,KK,HW
     height = (height_pad - kszie) // stride + 1
     width = (width_pad - kszie) // stride + 1
-    for idxh in range(height):
-        for idxw in range(width):
-            output[:, :, idxh * stride : idxh * stride + kszie, idxw * stride : idxw * stride + kszie] += input[:, :, :, idxh * width + idxw].reshape(input.shape[0], channel, kszie, -1)
+    for idx in range(kszie * kszie):
+        i, j = divmod(idx, kszie)  # i, j 分别是核内的行列索引
+        output[:, :, i: i + height * stride: stride, j: j + width * stride: stride] += \
+            input[:, :, idx, :].reshape(N, channel, height, width)#height_out
     return output[:, :, padding : height_pad - padding, padding : width_pad - padding]
     
 class ConvolutionalLayer(object):
@@ -98,8 +100,6 @@ class ConvolutionalLayer(object):
         return self.output
     def backward_speedup(self, top_diff):
         start_time = time.time()
-        print(self.weights_col.T.shape)
-        print(top_diff.shape)
         N, C, H, W = self.input.shape
         height = H + self.padding * 2
         width = W + self.padding * 2
@@ -164,29 +164,33 @@ class MaxPoolingLayer(object):
                 for idxh in range(height_out):
                     for idxw in range(width_out):
                         # TODO： 计算最大池化层的前向传播， 取池化窗口内的最大值
-                        self.output[idxn, idxc, idxh, idxw] = np.max(self.input[idxn, idxc, idxh * self.stride : idxh * self.stride + self.kernel_size, idxw * self.stride : idxw * self.stride + self.kernel_size])
-                        curren_max_index = np.argmax(self.input[idxn, idxc, idxh*self.stride:idxh*self.stride+self.kernel_size, idxw*self.stride:idxw*self.stride+self.kernel_size])
-                        curren_max_index = np.unravel_index(curren_max_index, [self.kernel_size, self.kernel_size])
-                        self.max_index[idxn, idxc, idxh*self.stride+curren_max_index[0], idxw*self.stride+curren_max_index[1]] = 1
+                        pool_window = self.input[idxn, idxc, 
+                            idxh * self.stride : idxh * self.stride + self.kernel_size, 
+                            idxw * self.stride : idxw * self.stride + self.kernel_size]
+                        max_val = np.max(pool_window)
+                        max_pos = np.where(pool_window == max_val)    
+                        self.output[idxn, idxc, idxh, idxw] = maxval
+                        selected_idx = np.random.choice(len(max_pos[0]))  
+                        sel_h, sel_w = max_pos[0][selected_idx], max_pos[1][selected_idx]
+                        self.max_index[idxn, idxc, idxh * self.stride + sel_h, idxw * self.stride + sel_w] = 1
         return self.output
     def forward_speedup(self, input):
         # TODO: 改进forward函数，使得计算加速
         start_time = time.time()
         self.input = input # [N, C, H, W]
-        self.height_out = (self.input.shape[2] - self.kernel_size) // self.stride + 1
-        self.width_out = (self.input.shape[3] - self.kernel_size) // self.stride + 1
-
-        self.input_col = im2col(self.input,self.kernel_size, self.stride).reshape(self.input.shape[0], self.input.shape[1], -1, self.height_out, self.width_out)
+        N, C, H, W = self.input.shape
+        self.height_out = (H - self.kernel_size) // self.stride + 1
+        self.width_out = (W - self.kernel_size) // self.stride + 1
+        self.input_col = im2col(self.input,self.kernel_size, self.stride).reshape(N, C, -1, self.height_out, self.width_out)
         output = self.input_col.max(axis=2, keepdims=True)
+        self.output = output.reshape(N, C, self.height_out, self.width_out)        
         self.max_index = (self.input_col == output)
-        self.output = output.reshape(self.input.shape[0], self.input.shape[1], self.height_out, self.width_out)
-
         return self.output
     def backward_speedup(self, top_diff):
         # TODO: 改进backward函数，使得计算加速
-        pool_diff = (self.max_index * top_diff[:, :, np.newaxis, :, :]).reshape(self.input.shape[0], -1, self.height_out * self.width_out)
-        bottom_diff = col2im(pool_diff, self.input.shape[2], self.input.shape[3], self.kernel_size, self.input.shape[1], 0, self.stride)
-
+        N, C, H, W = self.input.shape
+        pool_diff = (self.max_index * top_diff[:, :, np.newaxis, :, :]).reshape(N, -1, self.height_out * self.width_out)
+        bottom_diff = col2im(pool_diff, H, W, self.kernel_size, C, 0, self.stride)
         return bottom_diff
     def backward_raw_book(self, top_diff):
         bottom_diff = np.zeros(self.input.shape)
@@ -194,9 +198,14 @@ class MaxPoolingLayer(object):
             for idxc in range(top_diff.shape[1]):
                 for idxh in range(top_diff.shape[2]):
                     for idxw in range(top_diff.shape[3]):
-                        max_index = np.argmax(self.input[idxn, idxc, idxh*self.stride:idxh*self.stride+self.kernel_size, idxw*self.stride:idxw*self.stride+self.kernel_size])
+                        pool_window = self.input[idxn, idxc,
+                            idxh * self.stride : idxh * self.stride + self.kernel_size, 
+                            idxw * self.stride : idxw * self.stride + self.kernel_size]
+                        max_index = np.argmax(pool_window)
                         max_index = np.unravel_index(max_index, [self.kernel_size, self.kernel_size])
-                        bottom_diff[idxn, idxc, idxh*self.stride+max_index[0], idxw*self.stride+max_index[1]] = top_diff[idxn, idxc, idxh, idxw] 
+                        bottom_diff[idxn, idxc, 
+                            idxh * self.stride + max_index[0], 
+                            idxw * self.stride + max_index[1]] = top_diff[idxn, idxc, idxh, idxw] 
         show_matrix(top_diff, 'top_diff--------')
         show_matrix(bottom_diff, 'max pooling d_h ')
         return bottom_diff
